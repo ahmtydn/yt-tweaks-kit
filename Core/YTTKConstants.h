@@ -8,7 +8,7 @@
 
 // ─── Tweak Identity ──────────────────────────────────────────────────────────
 
-#define YTTK_TWEAK_NAME     @"YTTweaksKit"
+#define YTTK_TWEAK_NAME     @"Tweaks Kit"
 #define YTTK_TWEAK_VERSION  @"1.0.0"
 #define YTTK_BUNDLE_NAME    @"YTTweaksKit"
 #define YTTK_BUNDLE_ID      @"dev.ahmtydn.yttweakskit"
