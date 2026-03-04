@@ -19,6 +19,7 @@ TWEAK_NAME = YTTweaksKit
 # To add a new module, simply append its .x file to this list.
 # ──────────────────────────────────────────────────────────────────────────────
 $(TWEAK_NAME)_FILES = \
+	Core/YTTKConsoleLogStore.x \
 	Core/YTTKModuleManager.x \
 	Settings/YTTKSettings.x \
 	Settings/YTTKSettingsController.x \

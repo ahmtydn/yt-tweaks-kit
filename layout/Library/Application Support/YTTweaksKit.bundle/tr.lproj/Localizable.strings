@@ -7,3 +7,12 @@
 "YTTK_RESTART_REQUIRED" = "Uygulamayı yeniden başlatmak gerekir.";
 "YTTK_ENABLED" = "Etkin";
 "YTTK_DISABLED" = "Devre dışı";
+
+/* Console Logs */
+"YTTK_LOG_CAPTURE_TITLE" = "Konsol Loglarını Kaydet";
+"YTTK_LOG_CAPTURE_DESC" = "Uygulama konsol loglarını arka planda kaydeder.";
+"YTTK_VIEW_LOGS_TITLE" = "Konsol Loglarını Görüntüle";
+"YTTK_VIEW_LOGS_DESC" = "Kaydedilen logları aç ve kopyala.";
+"YTTK_NO_LOGS" = "Henüz kaydedilmiş log yok.";
+"YTTK_COPY_LOGS" = "Kopyala";
+"YTTK_CLOSE" = "Kapat";

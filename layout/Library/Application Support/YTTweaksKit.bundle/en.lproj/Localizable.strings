@@ -7,3 +7,12 @@
 "YTTK_RESTART_REQUIRED" = "App restart is required.";
 "YTTK_ENABLED" = "Enabled";
 "YTTK_DISABLED" = "Disabled";
+
+/* Console Logs */
+"YTTK_LOG_CAPTURE_TITLE" = "Capture Console Logs";
+"YTTK_LOG_CAPTURE_DESC" = "Save app console logs in the background.";
+"YTTK_VIEW_LOGS_TITLE" = "View Console Logs";
+"YTTK_VIEW_LOGS_DESC" = "Open and copy saved logs.";
+"YTTK_NO_LOGS" = "No logs saved yet.";
+"YTTK_COPY_LOGS" = "Copy";
+"YTTK_CLOSE" = "Close";

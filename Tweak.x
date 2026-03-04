@@ -7,9 +7,11 @@
  */
 #import "Core/YTTKModuleManager.h"
 #import "Core/YTTKConstants.h"
+#import "Core/YTTKConsoleLogStore.h"
 #import "Core/YTTKLogger.h"
 
 %ctor {
+    [[YTTKConsoleLogStore sharedStore] startCaptureIfNeeded];
     YTTKLog(@"Initializing %@ v%@", YTTK_TWEAK_NAME, YTTK_TWEAK_VERSION);
     [[YTTKModuleManager sharedManager] activateEnabledModules];
     YTTKLog(@"Initialization complete");

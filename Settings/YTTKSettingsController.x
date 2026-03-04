@@ -1,8 +1,10 @@
 #import <PSHeader/Misc.h>
+#import <UIKit/UIKit.h>
 #import <YouTubeHeader/YTSettingsGroupData.h>
 #import <YouTubeHeader/YTSettingsSectionItem.h>
 #import <YouTubeHeader/YTSettingsSectionItemManager.h>
 #import <YouTubeHeader/YTSettingsViewController.h>
+#import "../Core/YTTKConsoleLogStore.h"
 #import "../Core/YTTKConstants.h"
 #import "../Core/YTTKLogger.h"
 #import "../Core/YTTKModule.h"
@@ -15,6 +17,7 @@
 
 @interface YTSettingsSectionItemManager (YTTweaksKit)
 - (void)updateYTTKSectionWithEntry:(id)entry;
+- (void)presentYTTKLogsFromController:(UIViewController *)viewController;
 @end
 
 // ─── Hook: Insert our section into the settings category list ────────────────
@@ -103,6 +106,34 @@
         [sectionItems addObject:toggle];
     }
 
+    // ── Console Log Capture ────────────────────────────────────────────
+
+    YTSettingsSectionItem *logCaptureSwitch = [YTSettingsSectionItemClass switchItemWithTitle:LOC(@"YTTK_LOG_CAPTURE_TITLE")
+        titleDescription:LOC(@"YTTK_LOG_CAPTURE_DESC")
+        accessibilityIdentifier:nil
+        switchOn:[[YTTKConsoleLogStore sharedStore] isCaptureEnabled]
+        switchBlock:^BOOL (YTSettingsCell *cell, BOOL enabled) {
+            [[YTTKConsoleLogStore sharedStore] setCaptureEnabled:enabled];
+            if (enabled) {
+                [[YTTKConsoleLogStore sharedStore] startCaptureIfNeeded];
+            } else {
+                [[YTTKConsoleLogStore sharedStore] stopCaptureIfNeeded];
+            }
+            return YES;
+        }
+        settingItemId:0];
+    [sectionItems addObject:logCaptureSwitch];
+
+    YTSettingsSectionItem *showLogsItem = [YTSettingsSectionItemClass itemWithTitle:LOC(@"YTTK_VIEW_LOGS_TITLE")
+        titleDescription:LOC(@"YTTK_VIEW_LOGS_DESC")
+        accessibilityIdentifier:nil
+        detailTextBlock:nil
+        selectBlock:^BOOL (YTSettingsCell *cell, NSUInteger arg1) {
+            [self presentYTTKLogsFromController:settingsViewController];
+            return NO;
+        }];
+    [sectionItems addObject:showLogsItem];
+
     // ── Apply to Settings View ──────────────────────────────────────────
 
     if ([settingsViewController respondsToSelector:@selector(setSectionItems:forCategory:title:icon:titleDescription:headerHidden:)]) {
@@ -121,6 +152,38 @@
                                titleDescription:nil
                                    headerHidden:NO];
     }
+}
+
+%new(v@:@)
+- (void)presentYTTKLogsFromController:(UIViewController *)viewController {
+    NSString *logs = [[YTTKConsoleLogStore sharedStore] readLogTextForDisplay];
+    if (logs.length == 0) {
+        logs = LOC(@"YTTK_NO_LOGS");
+    }
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOC(@"YTTK_VIEW_LOGS_TITLE")
+                                                                   message:logs
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+
+    UIAlertAction *copyAction = [UIAlertAction actionWithTitle:LOC(@"YTTK_COPY_LOGS")
+                                                          style:UIAlertActionStyleDefault
+                                                        handler:^(__unused UIAlertAction *action) {
+        [UIPasteboard generalPasteboard].string = logs;
+    }];
+
+    UIAlertAction *closeAction = [UIAlertAction actionWithTitle:LOC(@"YTTK_CLOSE")
+                                                           style:UIAlertActionStyleCancel
+                                                         handler:nil];
+
+    [alert addAction:copyAction];
+    [alert addAction:closeAction];
+
+    UIViewController *presenter = viewController;
+    while (presenter.presentedViewController) {
+        presenter = presenter.presentedViewController;
+    }
+
+    [presenter presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
