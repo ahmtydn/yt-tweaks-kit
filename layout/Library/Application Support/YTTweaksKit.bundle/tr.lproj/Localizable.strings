@@ -1,0 +1,9 @@
+/* YTTweaksKit — Turkish Localization */
+
+/* Header */
+"YTTK_HEADER_DESC" = "YouTube için modüler tweak aracı.";
+
+/* Common */
+"YTTK_RESTART_REQUIRED" = "Uygulamayı yeniden başlatmak gerekir.";
+"YTTK_ENABLED" = "Etkin";
+"YTTK_DISABLED" = "Devre dışı";

@@ -1,0 +1,9 @@
+Package: dev.ahmtydn.yttweakskit
+Name: YTTweaksKit
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: A modular tweak toolkit for the YouTube iOS app.
+Maintainer: ahmtydn
+Author: ahmtydn
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 15.0)

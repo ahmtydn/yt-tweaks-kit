@@ -1,0 +1,9 @@
+/* YTTweaksKit — English Localization */
+
+/* Header */
+"YTTK_HEADER_DESC" = "A modular tweak toolkit for YouTube.";
+
+/* Common */
+"YTTK_RESTART_REQUIRED" = "App restart is required.";
+"YTTK_ENABLED" = "Enabled";
+"YTTK_DISABLED" = "Disabled";
