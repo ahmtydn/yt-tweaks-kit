@@ -159,6 +159,23 @@ static BOOL YTTKIsAntiAbuseRequest(NSURLRequest *request) {
 
 @end
 
+// ─── Hooks (must be defined before %init call) ──────────────────────────────
+
+%group AntiAbuseHooks
+
+%hook NSURLSessionConfiguration
+
+- (NSArray *)protocolClasses {
+    NSMutableArray *protocols = [NSMutableArray arrayWithObject:[YTTKAntiAbuseURLProtocol class]];
+    NSArray *orig = %orig;
+    if (orig) [protocols addObjectsFromArray:orig];
+    return protocols;
+}
+
+%end
+
+%end
+
 // ─── Module Implementation ──────────────────────────────────────────────────
 
 #define LOC_AA(x) [YTTKBundle() localizedStringForKey:x value:nil table:nil]
@@ -200,23 +217,6 @@ static BOOL YTTKIsAntiAbuseRequest(NSURLRequest *request) {
 }
 
 @end
-
-// ─── Hooks ──────────────────────────────────────────────────────────────────
-
-%group AntiAbuseHooks
-
-%hook NSURLSessionConfiguration
-
-- (NSArray *)protocolClasses {
-    NSMutableArray *protocols = [NSMutableArray arrayWithObject:[YTTKAntiAbuseURLProtocol class]];
-    NSArray *orig = %orig;
-    if (orig) [protocols addObjectsFromArray:orig];
-    return protocols;
-}
-
-%end
-
-%end
 
 // ─── Constructor — Register this module ─────────────────────────────────────
 
