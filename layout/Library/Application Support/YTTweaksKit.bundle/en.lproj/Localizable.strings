@@ -8,6 +8,10 @@
 "YTTK_ENABLED" = "Enabled";
 "YTTK_DISABLED" = "Disabled";
 
+/* Anti-Abuse Module */
+"YTTK_ANTIABUSE_NAME" = "Block Anti-Abuse";
+"YTTK_ANTIABUSE_DESC" = "Blocks repeated anti-abuse requests that cause playback to stop after ~1 minute.";
+
 /* Console Logs */
 "YTTK_LOG_CAPTURE_TITLE" = "Capture Console Logs";
 "YTTK_LOG_CAPTURE_DESC" = "Save app console logs in the background.";

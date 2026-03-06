@@ -8,6 +8,10 @@
 "YTTK_ENABLED" = "Etkin";
 "YTTK_DISABLED" = "Devre dışı";
 
+/* Anti-Abuse Modülü */
+"YTTK_ANTIABUSE_NAME" = "Anti-Abuse Engelle";
+"YTTK_ANTIABUSE_DESC" = "~1 dakika sonra videoların durmasına neden olan tekrarlanan anti-abuse isteklerini engeller.";
+
 /* Console Logs */
 "YTTK_LOG_CAPTURE_TITLE" = "Konsol Loglarını Kaydet";
 "YTTK_LOG_CAPTURE_DESC" = "Uygulama konsol loglarını arka planda kaydeder.";

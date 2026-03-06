@@ -24,6 +24,7 @@ $(TWEAK_NAME)_FILES = \
 	Settings/YTTKSettings.x \
 	Settings/YTTKSettingsController.x \
 	Modules/HelloWorld/YTTKHelloWorld.x \
+	Modules/AntiAbuse/YTTKAntiAbuse.x \
 	Tweak.x
 
 $(TWEAK_NAME)_CFLAGS = -fobjc-arc $(EXTRA_CFLAGS)
