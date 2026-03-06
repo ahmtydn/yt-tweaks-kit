@@ -3,11 +3,90 @@
 #import "../../Core/YTTKConstants.h"
 #import "../../Core/YTTKLogger.h"
 #import "../../Settings/YTTKSettings.h"
+#import <objc/runtime.h>
 
 static NSString *const kAntiAbuseHost = @"iosantiabuse-pa.googleapis.com";
 static NSUInteger _blockedCount = 0;
 
-// ─── URL Protocol Implementation ────────────────────────────────────────────
+// ─── Hooks (must be defined before %init call) ──────────────────────────────
+
+%group AntiAbuseHooks
+
+// ── 1. NSURLSessionConfiguration: inject URL protocol into all sessions ─────
+
+%hook NSURLSessionConfiguration
+
+- (NSArray *)protocolClasses {
+    NSMutableArray *protocols = [NSMutableArray arrayWithObject:[YTTKAntiAbuseURLProtocol class]];
+    NSArray *orig = %orig;
+    if (orig) [protocols addObjectsFromArray:orig];
+    return protocols;
+}
+
+%end
+
+// ── 2. IGDIntegrityTokenManager: stop integrity token refresh cycle ─────────
+
+%hook IGDIntegrityTokenManager
+
+- (void)refreshIntegrityTokenAndCall:(id)a0 onQueue:(id)a1 failFast:(BOOL)a2 seededRefreshState:(id)a3 {
+    YTTKLog(@"AntiAbuse: blocked IGDIntegrityTokenManager refreshIntegrityTokenAndCall:");
+    // Don't call %orig — stop the refresh cycle entirely
+}
+
+- (void)refreshIntegrityToken:(id)a0 completionHandler:(id)a1 {
+    YTTKLog(@"AntiAbuse: blocked IGDIntegrityTokenManager refreshIntegrityToken:");
+}
+
+- (void)refreshIntegrityTokenWithRefreshState:(id)a0 refreshStartDate:(id)a1 completionHandler:(id)a2 {
+    YTTKLog(@"AntiAbuse: blocked IGDIntegrityTokenManager refreshIntegrityTokenWithRefreshState:");
+}
+
+- (void)executeInitializeAndCall:(id)a0 onQueue:(id)a1 failFast:(BOOL)a2 {
+    YTTKLog(@"AntiAbuse: blocked IGDIntegrityTokenManager executeInitializeAndCall:");
+}
+
+%end
+
+// ── 3. YTAttestationChallengeProvider: stop attestation challenge refresh ───
+
+%hook YTAttestationChallengeProvider
+
+- (void)fetchAttestationChallenge {
+    YTTKLog(@"AntiAbuse: blocked YTAttestationChallengeProvider fetchAttestationChallenge");
+}
+
+- (void)refreshAttestationWithFailedAttempts:(NSUInteger)a0 refreshCompletion:(id)a1 {
+    YTTKLog(@"AntiAbuse: blocked YTAttestationChallengeProvider refreshAttestationWithFailedAttempts:");
+}
+
+- (void)executeChallengeForEngagementType:(id)a0 extraContentBindings:(id)a1 enforceValidChallenge:(BOOL)a2 withCompletion:(id)a3 onQueue:(id)a4 {
+    YTTKLog(@"AntiAbuse: blocked YTAttestationChallengeProvider executeChallengeForEngagementType:");
+}
+
+- (void)invalidateAndRestartRefreshWithCompletion:(id)a0 {
+    YTTKLog(@"AntiAbuse: blocked YTAttestationChallengeProvider invalidateAndRestartRefreshWithCompletion:");
+}
+
+%end
+
+// ── 4. YTIOSGuardSnapshotControllerImpl: bypass snapshot/challenge ──────────
+
+%hook YTIOSGuardSnapshotControllerImpl
+
+- (void)handleAttestationChallengeResponse:(id)a0 error:(id)a1 videoID:(id)a2 identityID:(id)a3 completionHandler:(id)a4 {
+    YTTKLog(@"AntiAbuse: blocked YTIOSGuardSnapshotControllerImpl handleAttestationChallengeResponse:");
+    // Call completion with nil to signal "no challenge needed"
+    if (a4) {
+        ((void(^)(id))a4)(nil);
+    }
+}
+
+%end
+
+%end
+
+// ─── URL Protocol (network-level fallback) ──────────────────────────────────
 
 @implementation YTTKAntiAbuseURLProtocol
 
@@ -16,9 +95,7 @@ static NSUInteger _blockedCount = 0;
     if (host && [host isEqualToString:kAntiAbuseHost]) {
         _blockedCount++;
         if (_blockedCount <= 3) {
-            YTTKLog(@"AntiAbuse: blocking request #%lu to %@", (unsigned long)_blockedCount, host);
-        } else if (_blockedCount == 4) {
-            YTTKLog(@"AntiAbuse: suppressing further log messages (blocked %lu so far)", (unsigned long)_blockedCount);
+            YTTKLog(@"AntiAbuse: blocking network request #%lu to %@", (unsigned long)_blockedCount, host);
         }
         return YES;
     }
@@ -34,7 +111,6 @@ static NSUInteger _blockedCount = 0;
 }
 
 - (void)startLoading {
-    // Return an immediate empty 200 response — never hit the network
     NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:self.request.URL
                                                              statusCode:200
                                                             HTTPVersion:@"HTTP/1.1"
@@ -50,23 +126,6 @@ static NSUInteger _blockedCount = 0;
 - (void)stopLoading {}
 
 @end
-
-// ─── Hooks (must be defined before %init call) ──────────────────────────────
-
-%group AntiAbuseHooks
-
-%hook NSURLSessionConfiguration
-
-- (NSArray *)protocolClasses {
-    NSMutableArray *protocols = [NSMutableArray arrayWithObject:[YTTKAntiAbuseURLProtocol class]];
-    NSArray *orig = %orig;
-    if (orig) [protocols addObjectsFromArray:orig];
-    return protocols;
-}
-
-%end
-
-%end
 
 // ─── Module Implementation ──────────────────────────────────────────────────
 
@@ -99,15 +158,16 @@ static NSUInteger _blockedCount = 0;
 }
 
 + (void)activate {
-    YTTKLog(@"AntiAbuse module activated — all requests to %@ will be blocked", kAntiAbuseHost);
+    YTTKLog(@"AntiAbuse module activated — hooking IGDIntegrityTokenManager, YTAttestationChallengeProvider, YTIOSGuardSnapshotControllerImpl");
 
+    // Internal YouTube class hooks + NSURLProtocol fallback
     [NSURLProtocol registerClass:[YTTKAntiAbuseURLProtocol class]];
     %init(AntiAbuseHooks);
 }
 
 @end
 
-// ─── Constructor — Register this module ─────────────────────────────────────
+// ─── Constructor ────────────────────────────────────────────────────────────
 
 %ctor {
     [[YTTKModuleManager sharedManager] registerModule:[YTTKAntiAbuse class]];

@@ -5,25 +5,17 @@
 
 /**
  * @class YTTKAntiAbuse
- * @abstract Blocks repeated iOS anti-abuse requests that cause playback failures.
+ * @abstract Blocks YouTube's anti-abuse/integrity token system to prevent playback failures.
  *
- * YouTube's iosantiabuse-pa.googleapis.com endpoint is continuously polled
- * in certain versions, causing videos to stop playing after ~40-60 seconds.
- *
- * Strategy:
- *   1. The first request passes through normally via a side-channel NSURLSession
- *   2. The response headers + body from that first request are cached (thread-safe)
- *   3. All subsequent requests are intercepted and receive the cached response
- *
- * This preserves VP9/AV1 codec support and 4K+ resolutions.
+ * Hooks into YouTube's internal classes:
+ *   - IGDIntegrityTokenManager: stops integrity token refresh cycle
+ *   - YTAttestationChallengeProvider: blocks attestation challenge fetch/refresh
+ *   - YTIOSGuardSnapshotControllerImpl: bypasses IOSGuard challenge handling
+ *   - NSURLProtocol fallback: blocks iosantiabuse-pa.googleapis.com at network level
  */
 @interface YTTKAntiAbuse : NSObject <YTTKModule>
 @end
 
-/**
- * NSURLProtocol subclass that intercepts iosantiabuse-pa.googleapis.com.
- * Caches the first valid response and replays it for subsequent requests.
- */
 @interface YTTKAntiAbuseURLProtocol : NSURLProtocol
 @end
 
