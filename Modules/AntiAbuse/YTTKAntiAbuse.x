@@ -3,54 +3,26 @@
 #import "../../Core/YTTKConstants.h"
 #import "../../Core/YTTKLogger.h"
 #import "../../Settings/YTTKSettings.h"
-#import <os/lock.h>
-
-// ─── Shared State (thread-safe) ─────────────────────────────────────────────
-
-static os_unfair_lock _antiAbuseLock = OS_UNFAIR_LOCK_INIT;
-static BOOL           _firstRequestSent = NO;
-static BOOL           _firstRequestCompleted = NO;
-static NSData        *_cachedResponseBody = nil;
-static NSDictionary  *_cachedResponseHeaders = nil;
-static NSInteger      _cachedStatusCode = 200;
 
 static NSString *const kAntiAbuseHost = @"iosantiabuse-pa.googleapis.com";
-
-// ─── Helper: Check if a URL is an anti-abuse request ────────────────────────
-
-static BOOL YTTKIsAntiAbuseRequest(NSURLRequest *request) {
-    NSString *host = request.URL.host;
-    return (host && [host isEqualToString:kAntiAbuseHost]);
-}
+static NSUInteger _blockedCount = 0;
 
 // ─── URL Protocol Implementation ────────────────────────────────────────────
 
 @implementation YTTKAntiAbuseURLProtocol
 
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
-    if (!YTTKIsAntiAbuseRequest(request)) return NO;
-
-    // Prevent infinite recursion: tag requests we've already touched
-    if ([NSURLProtocol propertyForKey:@"YTTKAntiAbuseHandled" inRequest:request]) {
-        return NO;
-    }
-
-    os_unfair_lock_lock(&_antiAbuseLock);
-    BOOL firstSent = _firstRequestSent;
-    if (!firstSent) {
-        _firstRequestSent = YES;
-    }
-    os_unfair_lock_unlock(&_antiAbuseLock);
-
-    if (!firstSent) {
-        // First request — we intercept it ourselves to capture the response
-        YTTKLog(@"AntiAbuse: capturing first request to %@", request.URL.host);
+    NSString *host = request.URL.host;
+    if (host && [host isEqualToString:kAntiAbuseHost]) {
+        _blockedCount++;
+        if (_blockedCount <= 3) {
+            YTTKLog(@"AntiAbuse: blocking request #%lu to %@", (unsigned long)_blockedCount, host);
+        } else if (_blockedCount == 4) {
+            YTTKLog(@"AntiAbuse: suppressing further log messages (blocked %lu so far)", (unsigned long)_blockedCount);
+        }
         return YES;
     }
-
-    // Subsequent requests — intercept and replay cached response
-    YTTKLog(@"AntiAbuse: intercepting subsequent request to %@", request.URL.host);
-    return YES;
+    return NO;
 }
 
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {
@@ -62,100 +34,20 @@ static BOOL YTTKIsAntiAbuseRequest(NSURLRequest *request) {
 }
 
 - (void)startLoading {
-    os_unfair_lock_lock(&_antiAbuseLock);
-    BOOL hasCache = _firstRequestCompleted && _cachedResponseBody != nil;
-    os_unfair_lock_unlock(&_antiAbuseLock);
-
-    if (hasCache) {
-        // We already have a cached response — replay it immediately
-        [self replayWithCachedResponse];
-    } else {
-        // This is the first request — send it for real and cache the response
-        [self performFirstRequest];
-    }
-}
-
-- (void)stopLoading {
-    // No-op: first request is fire-and-forget via a detached session task
-}
-
-// ─── First Request: Execute and Cache ───────────────────────────────────────
-
-- (void)performFirstRequest {
-    // Tag the request so our protocol doesn't intercept it again (infinite loop prevention)
-    NSMutableURLRequest *taggedRequest = [self.request mutableCopy];
-    [NSURLProtocol setProperty:@YES forKey:@"YTTKAntiAbuseHandled" inRequest:taggedRequest];
-
-    // Use an ephemeral session so our custom protocolClasses hook doesn't apply
-    NSURLSessionConfiguration *ephemeralConfig = [NSURLSessionConfiguration ephemeralSessionConfiguration];
-    ephemeralConfig.protocolClasses = @[]; // No custom protocols — direct network access
-    NSURLSession *session = [NSURLSession sessionWithConfiguration:ephemeralConfig];
-
-    NSURLSessionDataTask *task = [session dataTaskWithRequest:taggedRequest
-                                           completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error || !data) {
-            YTTKLog(@"AntiAbuse: first request failed: %@", error.localizedDescription);
-            // Even on failure, provide a minimal valid response so the app doesn't hang
-            [self replyWithEmptyProtobuf];
-            os_unfair_lock_lock(&_antiAbuseLock);
-            _firstRequestCompleted = YES;
-            os_unfair_lock_unlock(&_antiAbuseLock);
-            return;
-        }
-
-        // Cache the successful response
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        os_unfair_lock_lock(&_antiAbuseLock);
-        _cachedResponseBody = [data copy];
-        _cachedResponseHeaders = [httpResponse.allHeaderFields copy];
-        _cachedStatusCode = httpResponse.statusCode;
-        _firstRequestCompleted = YES;
-        os_unfair_lock_unlock(&_antiAbuseLock);
-
-        YTTKLog(@"AntiAbuse: first response cached (%lu bytes, HTTP %ld)",
-                (unsigned long)data.length, (long)httpResponse.statusCode);
-
-        // Deliver the real response to the original caller
-        [self.client URLProtocol:self didReceiveResponse:httpResponse
-                cacheStoragePolicy:NSURLCacheStorageNotAllowed];
-        [self.client URLProtocol:self didLoadData:data];
-        [self.client URLProtocolDidFinishLoading:self];
-    }];
-    [task resume];
-}
-
-// ─── Replay: Return Cached Response ─────────────────────────────────────────
-
-- (void)replayWithCachedResponse {
-    os_unfair_lock_lock(&_antiAbuseLock);
-    NSData *body = [_cachedResponseBody copy];
-    NSDictionary *headers = [_cachedResponseHeaders copy];
-    NSInteger statusCode = _cachedStatusCode;
-    os_unfair_lock_unlock(&_antiAbuseLock);
-
-    NSHTTPURLResponse *fakeResponse = [[NSHTTPURLResponse alloc] initWithURL:self.request.URL
-                                                                 statusCode:statusCode
-                                                                HTTPVersion:@"HTTP/1.1"
-                                                               headerFields:headers];
-    [self.client URLProtocol:self didReceiveResponse:fakeResponse
-            cacheStoragePolicy:NSURLCacheStorageNotAllowed];
-    [self.client URLProtocol:self didLoadData:body];
-    [self.client URLProtocolDidFinishLoading:self];
-}
-
-// ─── Fallback: Minimal Protobuf Response ────────────────────────────────────
-
-- (void)replyWithEmptyProtobuf {
-    NSHTTPURLResponse *fakeResponse = [[NSHTTPURLResponse alloc] initWithURL:self.request.URL
-                                                                 statusCode:200
-                                                                HTTPVersion:@"HTTP/1.1"
-                                                               headerFields:@{@"Content-Type": @"application/x-protobuf"}];
-    [self.client URLProtocol:self didReceiveResponse:fakeResponse
-            cacheStoragePolicy:NSURLCacheStorageNotAllowed];
-    // Minimal valid protobuf: empty message (zero bytes is valid)
+    // Return an immediate empty 200 response — never hit the network
+    NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:self.request.URL
+                                                             statusCode:200
+                                                            HTTPVersion:@"HTTP/1.1"
+                                                           headerFields:@{
+                                                               @"Content-Type": @"application/x-protobuf",
+                                                               @"Content-Length": @"0"
+                                                           }];
+    [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
     [self.client URLProtocol:self didLoadData:[NSData data]];
     [self.client URLProtocolDidFinishLoading:self];
 }
+
+- (void)stopLoading {}
 
 @end
 
@@ -207,12 +99,9 @@ static BOOL YTTKIsAntiAbuseRequest(NSURLRequest *request) {
 }
 
 + (void)activate {
-    YTTKLog(@"AntiAbuse module activated — registering URL protocol and session hooks");
+    YTTKLog(@"AntiAbuse module activated — all requests to %@ will be blocked", kAntiAbuseHost);
 
-    // Register for NSURLConnection and shared NSURLSession
     [NSURLProtocol registerClass:[YTTKAntiAbuseURLProtocol class]];
-
-    // Hook NSURLSessionConfiguration to inject into custom sessions
     %init(AntiAbuseHooks);
 }
 
