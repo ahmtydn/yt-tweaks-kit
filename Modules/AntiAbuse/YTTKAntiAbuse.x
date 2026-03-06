@@ -6,7 +6,19 @@
 #import <objc/runtime.h>
 
 static NSString *const kAntiAbuseHost = @"iosantiabuse-pa.googleapis.com";
-static NSUInteger _blockedCount = 0;
+
+// ─── Per-hook counters ──────────────────────────────────────────────────────
+
+static NSUInteger _blockedNetworkCount = 0;
+static NSUInteger _blockedIGDRefreshTokenAndCall = 0;
+static NSUInteger _blockedIGDRefreshToken = 0;
+static NSUInteger _blockedIGDRefreshTokenWithState = 0;
+static NSUInteger _blockedIGDExecuteInit = 0;
+static NSUInteger _blockedAttFetch = 0;
+static NSUInteger _blockedAttRefresh = 0;
+static NSUInteger _blockedAttExecuteChallenge = 0;
+static NSUInteger _blockedAttInvalidate = 0;
+static NSUInteger _blockedIOSGuardHandle = 0;
 
 // ─── Hooks (must be defined before %init call) ──────────────────────────────
 
@@ -30,20 +42,26 @@ static NSUInteger _blockedCount = 0;
 %hook IGDIntegrityTokenManager
 
 - (void)refreshIntegrityTokenAndCall:(id)a0 onQueue:(id)a1 failFast:(BOOL)a2 seededRefreshState:(id)a3 {
-    YTTKLog(@"AntiAbuse: blocked IGDIntegrityTokenManager refreshIntegrityTokenAndCall:");
-    // Don't call %orig — stop the refresh cycle entirely
+    _blockedIGDRefreshTokenAndCall++;
+    YTTKLog(@"[AntiAbuse][IGD] BLOCKED refreshIntegrityTokenAndCall: (count: %lu, failFast: %@)",
+            (unsigned long)_blockedIGDRefreshTokenAndCall, a2 ? @"YES" : @"NO");
 }
 
 - (void)refreshIntegrityToken:(id)a0 completionHandler:(id)a1 {
-    YTTKLog(@"AntiAbuse: blocked IGDIntegrityTokenManager refreshIntegrityToken:");
+    _blockedIGDRefreshToken++;
+    YTTKLog(@"[AntiAbuse][IGD] BLOCKED refreshIntegrityToken: (count: %lu)", (unsigned long)_blockedIGDRefreshToken);
 }
 
 - (void)refreshIntegrityTokenWithRefreshState:(id)a0 refreshStartDate:(id)a1 completionHandler:(id)a2 {
-    YTTKLog(@"AntiAbuse: blocked IGDIntegrityTokenManager refreshIntegrityTokenWithRefreshState:");
+    _blockedIGDRefreshTokenWithState++;
+    YTTKLog(@"[AntiAbuse][IGD] BLOCKED refreshIntegrityTokenWithRefreshState: (count: %lu, startDate: %@)",
+            (unsigned long)_blockedIGDRefreshTokenWithState, a1);
 }
 
 - (void)executeInitializeAndCall:(id)a0 onQueue:(id)a1 failFast:(BOOL)a2 {
-    YTTKLog(@"AntiAbuse: blocked IGDIntegrityTokenManager executeInitializeAndCall:");
+    _blockedIGDExecuteInit++;
+    YTTKLog(@"[AntiAbuse][IGD] BLOCKED executeInitializeAndCall: (count: %lu, failFast: %@)",
+            (unsigned long)_blockedIGDExecuteInit, a2 ? @"YES" : @"NO");
 }
 
 %end
@@ -53,19 +71,26 @@ static NSUInteger _blockedCount = 0;
 %hook YTAttestationChallengeProvider
 
 - (void)fetchAttestationChallenge {
-    YTTKLog(@"AntiAbuse: blocked YTAttestationChallengeProvider fetchAttestationChallenge");
+    _blockedAttFetch++;
+    YTTKLog(@"[AntiAbuse][Attestation] BLOCKED fetchAttestationChallenge (count: %lu)", (unsigned long)_blockedAttFetch);
 }
 
 - (void)refreshAttestationWithFailedAttempts:(NSUInteger)a0 refreshCompletion:(id)a1 {
-    YTTKLog(@"AntiAbuse: blocked YTAttestationChallengeProvider refreshAttestationWithFailedAttempts:");
+    _blockedAttRefresh++;
+    YTTKLog(@"[AntiAbuse][Attestation] BLOCKED refreshAttestationWithFailedAttempts: %lu (count: %lu)",
+            (unsigned long)a0, (unsigned long)_blockedAttRefresh);
 }
 
 - (void)executeChallengeForEngagementType:(id)a0 extraContentBindings:(id)a1 enforceValidChallenge:(BOOL)a2 withCompletion:(id)a3 onQueue:(id)a4 {
-    YTTKLog(@"AntiAbuse: blocked YTAttestationChallengeProvider executeChallengeForEngagementType:");
+    _blockedAttExecuteChallenge++;
+    YTTKLog(@"[AntiAbuse][Attestation] BLOCKED executeChallengeForEngagementType: %@ enforceValid: %@ (count: %lu)",
+            a0, a2 ? @"YES" : @"NO", (unsigned long)_blockedAttExecuteChallenge);
 }
 
 - (void)invalidateAndRestartRefreshWithCompletion:(id)a0 {
-    YTTKLog(@"AntiAbuse: blocked YTAttestationChallengeProvider invalidateAndRestartRefreshWithCompletion:");
+    _blockedAttInvalidate++;
+    YTTKLog(@"[AntiAbuse][Attestation] BLOCKED invalidateAndRestartRefreshWithCompletion: (count: %lu)",
+            (unsigned long)_blockedAttInvalidate);
 }
 
 %end
@@ -75,9 +100,11 @@ static NSUInteger _blockedCount = 0;
 %hook YTIOSGuardSnapshotControllerImpl
 
 - (void)handleAttestationChallengeResponse:(id)a0 error:(id)a1 videoID:(id)a2 identityID:(id)a3 completionHandler:(id)a4 {
-    YTTKLog(@"AntiAbuse: blocked YTIOSGuardSnapshotControllerImpl handleAttestationChallengeResponse:");
-    // Call completion with nil to signal "no challenge needed"
+    _blockedIOSGuardHandle++;
+    YTTKLog(@"[AntiAbuse][IOSGuard] BLOCKED handleAttestationChallengeResponse: (count: %lu, videoID: %@, error: %@, hasCompletion: %@)",
+            (unsigned long)_blockedIOSGuardHandle, a2, a1, a4 ? @"YES" : @"NO");
     if (a4) {
+        YTTKLog(@"[AntiAbuse][IOSGuard] Calling completion with nil (bypassing challenge)");
         ((void(^)(id))a4)(nil);
     }
 }
@@ -93,10 +120,9 @@ static NSUInteger _blockedCount = 0;
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
     NSString *host = request.URL.host;
     if (host && [host isEqualToString:kAntiAbuseHost]) {
-        _blockedCount++;
-        if (_blockedCount <= 3) {
-            YTTKLog(@"AntiAbuse: blocking network request #%lu to %@", (unsigned long)_blockedCount, host);
-        }
+        _blockedNetworkCount++;
+        YTTKLog(@"[AntiAbuse][Network] INTERCEPTED request #%lu — %@ %@",
+                (unsigned long)_blockedNetworkCount, request.HTTPMethod ?: @"GET", request.URL.absoluteString);
         return YES;
     }
     return NO;
@@ -111,6 +137,7 @@ static NSUInteger _blockedCount = 0;
 }
 
 - (void)startLoading {
+    YTTKLog(@"[AntiAbuse][Network] BLOCKED request — returning empty 200 for %@", self.request.URL.host);
     NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:self.request.URL
                                                              statusCode:200
                                                             HTTPVersion:@"HTTP/1.1"
@@ -158,11 +185,34 @@ static NSUInteger _blockedCount = 0;
 }
 
 + (void)activate {
-    YTTKLog(@"AntiAbuse module activated — hooking IGDIntegrityTokenManager, YTAttestationChallengeProvider, YTIOSGuardSnapshotControllerImpl");
+    YTTKLog(@"[AntiAbuse] ──────────────────────────────────────────────────");
+    YTTKLog(@"[AntiAbuse] Module ACTIVATING...");
+    YTTKLog(@"[AntiAbuse] Target host: %@", kAntiAbuseHost);
 
-    // Internal YouTube class hooks + NSURLProtocol fallback
-    [NSURLProtocol registerClass:[YTTKAntiAbuseURLProtocol class]];
+    // Register NSURLProtocol
+    BOOL protocolRegistered = [NSURLProtocol registerClass:[YTTKAntiAbuseURLProtocol class]];
+    if (protocolRegistered) {
+        YTTKLog(@"[AntiAbuse] NSURLProtocol registered: YES — network-level blocking ACTIVE");
+    } else {
+        YTTKLog(@"[AntiAbuse] NSURLProtocol registered: FAILED — network-level blocking INACTIVE");
+    }
+
+    // Init hooks
+    YTTKLog(@"[AntiAbuse] Initializing hooks...");
+
+    BOOL igdExists = objc_getClass("IGDIntegrityTokenManager") != nil;
+    BOOL attExists = objc_getClass("YTAttestationChallengeProvider") != nil;
+    BOOL iosGuardExists = objc_getClass("YTIOSGuardSnapshotControllerImpl") != nil;
+
+    YTTKLog(@"[AntiAbuse]   IGDIntegrityTokenManager:          %@", igdExists ? @"FOUND" : @"NOT FOUND — hook will be skipped by runtime");
+    YTTKLog(@"[AntiAbuse]   YTAttestationChallengeProvider:     %@", attExists ? @"FOUND" : @"NOT FOUND — hook will be skipped by runtime");
+    YTTKLog(@"[AntiAbuse]   YTIOSGuardSnapshotControllerImpl:   %@", iosGuardExists ? @"FOUND" : @"NOT FOUND — hook will be skipped by runtime");
+
     %init(AntiAbuseHooks);
+
+    YTTKLog(@"[AntiAbuse] Hooks initialized successfully");
+    YTTKLog(@"[AntiAbuse] Module ACTIVATED — all anti-abuse channels are being blocked");
+    YTTKLog(@"[AntiAbuse] ──────────────────────────────────────────────────");
 }
 
 @end
@@ -170,5 +220,7 @@ static NSUInteger _blockedCount = 0;
 // ─── Constructor ────────────────────────────────────────────────────────────
 
 %ctor {
+    YTTKLog(@"[AntiAbuse] Constructor called — registering module with YTTKModuleManager");
     [[YTTKModuleManager sharedManager] registerModule:[YTTKAntiAbuse class]];
+    YTTKLog(@"[AntiAbuse] Module registered successfully");
 }
