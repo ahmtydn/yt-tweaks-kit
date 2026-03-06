@@ -113,39 +113,40 @@ static NSUInteger _blockedGenericAttLog = 0;
 
 %hook YTIOSGuardSnapshotControllerImpl
 
-// Gate check — return NO here and YouTube won't even call constructPlayback...
-- (BOOL)shouldConstructIOSGuardSnapshot {
-    YTTKLog(@"[AntiAbuse][IOSGuard] shouldConstructIOSGuardSnapshot → NO");
-    return NO;
-}
-
 - (void)handleAttestationChallengeResponse:(id)a0 error:(id)a1 videoID:(id)a2 identityID:(id)a3 completionHandler:(id)a4 {
     _blockedIOSGuardHandle++;
     YTTKLog(@"[AntiAbuse][IOSGuard] BLOCKED handleAttestationChallengeResponse: (count: %lu, videoID: %@, error: %@)",
             (unsigned long)_blockedIOSGuardHandle, a2, a1);
-    // Do NOT call completion — let this hang rather than return nil (nil == failure → retry loop)
+    // Signal success with no data: ^(result, error) → (nil, nil)
+    if (a4) ((void(^)(id, id))a4)(nil, nil);
 }
 
-// NOTE: completion is intentionally NOT called.
-// Calling completion(nil) tells YouTube "snapshot failed" → triggers retry after ~38s → crash.
-// Leaving completion uncalled leaves attestation in "pending" state indefinitely = safe.
+// Completion signature: ^(YTIOSGuardSnapshot *snapshot, NSError *error)
+// (nil, nil) = "no snapshot needed, no error" → YouTube continues playback.
+// (nil, any) = "failed" → YouTube retries → crash.
+// Not calling = YouTube fires 19s timeout → crash.
 - (void)constructPlaybackAttestationSnapshotWithCPN:(id)cpn identityID:(id)identityID visitorData:(id)visitorData videoID:(id)videoID completionHandler:(id)completion {
     _blockedIOSGuardConstruct++;
-    YTTKLog(@"[AntiAbuse][IOSGuard] BLOCKED constructPlaybackAttestationSnapshot (count: %lu, videoID: %@) — completion NOT called",
+    YTTKLog(@"[AntiAbuse][IOSGuard] BLOCKED constructPlaybackAttestationSnapshot (count: %lu, videoID: %@)",
             (unsigned long)_blockedIOSGuardConstruct, videoID);
+    if (completion) ((void(^)(id, id))completion)(nil, nil);
 }
 
 - (void)constructPlaybackAttestationSnapshotWithCPN:(id)cpn identityID:(id)identityID visitorData:(id)visitorData videoID:(id)videoID retry:(BOOL)retry completionHandler:(id)completion {
     _blockedIOSGuardConstruct++;
-    YTTKLog(@"[AntiAbuse][IOSGuard] BLOCKED constructPlaybackAttestationSnapshot+retry (count: %lu, videoID: %@, retry: %@) — completion NOT called",
+    YTTKLog(@"[AntiAbuse][IOSGuard] BLOCKED constructPlaybackAttestationSnapshot+retry (count: %lu, videoID: %@, retry: %@)",
             (unsigned long)_blockedIOSGuardConstruct, videoID, retry ? @"YES" : @"NO");
+    if (completion) ((void(^)(id, id))completion)(nil, nil);
 }
 
-// Intentionally NOT calling completion — same reason as above
+// reuseStoredIOSGuardChallenge: (nil, nil) = "no cache, no error"
+// YouTube will fall through to constructPlaybackAttestationSnapshot,
+// which we also answer with (nil, nil) = "no snapshot needed, no error".
 - (void)reuseStoredIOSGuardChallengeForVideoID:(id)videoID completionHandler:(id)completion {
     _blockedIOSGuardReuse++;
-    YTTKLog(@"[AntiAbuse][IOSGuard] BLOCKED reuseStoredIOSGuardChallenge (count: %lu, videoID: %@) — completion NOT called",
+    YTTKLog(@"[AntiAbuse][IOSGuard] BLOCKED reuseStoredIOSGuardChallenge (count: %lu, videoID: %@)",
             (unsigned long)_blockedIOSGuardReuse, videoID);
+    if (completion) ((void(^)(id, id))completion)(nil, nil);
 }
 
 %end
@@ -166,9 +167,9 @@ static NSUInteger _blockedGenericAttLog = 0;
 
 - (void)runAndSnapshotWithChallenge:(id)challenge setup:(id)setup completion:(id)completion {
     _blockedSSORunSnapshot++;
-    YTTKLog(@"[AntiAbuse][SSOIOSGuard] BLOCKED runAndSnapshotWithChallenge: (count: %lu) — completion NOT called",
+    YTTKLog(@"[AntiAbuse][SSOIOSGuard] BLOCKED runAndSnapshotWithChallenge: (count: %lu)",
             (unsigned long)_blockedSSORunSnapshot);
-    // Do NOT call completion — same principle: nil result would propagate as failure
+    if (completion) ((void(^)(id, id))completion)(nil, nil);
 }
 
 %end
