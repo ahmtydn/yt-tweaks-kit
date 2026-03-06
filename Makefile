@@ -23,7 +23,6 @@ $(TWEAK_NAME)_FILES = \
 	Core/YTTKModuleManager.x \
 	Settings/YTTKSettings.x \
 	Settings/YTTKSettingsController.x \
-	Modules/HelloWorld/YTTKHelloWorld.x \
 	Modules/AntiAbuse/YTTKAntiAbuse.x \
 	Tweak.x
 
